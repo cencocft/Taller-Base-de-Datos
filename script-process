@@ -1,0 +1,180 @@
+Fase 1: Configuración de Usuarios y Permisos
+
+Paso 1: Crear la Base de Datos y Tablas
+
+1.	Crear la base de datos terminus2000:
+
+CREATE DATABASE IF NOT EXISTS terminus2000;
+USE terminus2000;
+
+2.	Crear las tablas necesarias:
+
+CREATE TABLE IF NOT EXISTS clientes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nombre VARCHAR(100),
+    email VARCHAR(100)
+);
+
+CREATE TABLE IF NOT EXISTS pedidos (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    cliente_id INT,
+    producto VARCHAR(100),
+    cantidad INT,
+    FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+);
+
+CREATE TABLE IF NOT EXISTS stock (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    producto VARCHAR(100),
+    cantidad INT
+);
+
+Paso 2: Crear Usuarios y Asignar Permisos
+
+1.	Usuario Administrador (admin_t2000):
+
+CREATE USER IF NOT EXISTS 'admin_t2000'@'localhost' IDENTIFIED BY 'P@ssw0rd_AdminT2000';
+GRANT ALL PRIVILEGES ON terminus2000.* TO 'admin_t2000'@'localhost';
+
+2.	Usuario Ventas (ventas_t2000):
+
+CREATE USER IF NOT EXISTS 'ventas_t2000'@'localhost' IDENTIFIED BY 'P@ssw0rd_VentasT2000';
+GRANT SELECT ON terminus2000.clientes TO 'ventas_t2000'@'localhost';
+GRANT SELECT ON terminus2000.pedidos TO 'ventas_t2000'@'localhost';
+
+3.	Usuario Bodega (bodega_t2000):
+
+CREATE USER IF NOT EXISTS 'bodega_t2000'@'localhost' IDENTIFIED BY 'P@ssw0rd_BodegaT2000';
+GRANT INSERT, UPDATE ON terminus2000.stock TO 'bodega_t2000'@'localhost';
+
+4.	Actualizar privilegios:
+
+FLUSH PRIVILEGES;
+ 
+
+Fase 2: Copias de Seguridad y Restauración
+
+Paso 1: Insertar Datos de Prueba
+
+1.	Insertar datos en la tabla clientes:
+
+INSERT INTO clientes (nombre, email) VALUES
+('Juan Pérez', 'juan@empresa.com'),
+('María Gómez', 'maria@restaurante.com'),
+('Auditorios S.A.', 'contacto@auditorios.com');
+
+2.	Insertar datos en la tabla pedidos:
+
+INSERT INTO pedidos (cliente_id, producto, cantidad) VALUES
+(1, 'Silla Ejecutiva', 50),
+(2, 'Silla de Restaurante', 200),
+(3, 'Silla para Auditorio', 500);
+
+3.	Insertar datos en la tabla stock:
+
+INSERT INTO stock (producto, cantidad) VALUES
+('Silla Ejecutiva', 100),
+('Silla de Restaurante', 300),
+('Silla para Auditorio', 800);
+
+Paso 2: Generar Copia de Seguridad con mysqldump
+
+1.	Abre la terminal o línea de comandos en Windows.
+2.	Ejecuta el siguiente comando para generar la copia de seguridad:
+
+mysqldump -u root -p terminus2000 > backup_terminus2000.sql
+
+o	-u root: Usuario de MySQL (puedes cambiarlo por admin_t2000 si prefieres).
+o	-p: Te pedirá la contraseña del usuario.
+o	terminus2000: Nombre de la base de datos.
+o	backup_terminus2000.sql: Nombre del archivo de respaldo.
+
+
+Paso 3: Simular un Incidente y Restaurar la Base de Datos
+
+1.	Simular la eliminación de datos:
+o	Elimina algunos registros de las tablas para simular un incidente.
+
+SELECT * FROM clientes;
+SELECT * FROM pedidos WHERE cliente_id = 1;
+DELETE FROM pedidos WHERE cliente_id = 1;
+SELECT * FROM pedidos WHERE cliente_id = 1;
+DELETE FROM clientes WHERE id = 1;
+SELECT * FROM clientes WHERE id = 1;
+
+2.	Restaurar la base de datos desde el respaldo:
+o	Ejecuta el siguiente comando en la terminal:
+
+mysql -u root -p terminus2000 < backup_terminus2000.sql
+
+Fase 3: Seguridad en la Base de Datos
+
+Paso 1: Configurar Autenticación Segura
+
+1.	Restringir conexiones externas:
+o	Asegúrate de que los usuarios solo puedan conectarse desde localhost 
+o	Si necesitas restringir más, puedes usar GRANT con direcciones IP específicas.
+
+Cambiar el host de un usuario a localhost:
+RENAME USER 'ventas_t2000'@'%' TO 'ventas_t2000'@'localhost';
+
+Cambiar el host de un usuario a una IP específica:
+RENAME USER 'bodega_t2000'@'%' TO 'bodega_t2000'@'192.168.1.%';
+
+Eliminar usuarios que no necesiten acceso remoto:
+DROP USER 'usuario_inseguro'@'%';
+
+
+2.	Habilitar logs de auditoría:
+o	Edita el archivo de configuración de MySQL y agrega:
+
+[mysqld]
+general_log = 1
+general_log_file = /var/log/mysql/general.log
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/slow.log
+long_query_time = 2
+
+o	Reinicia el servicio de MySQL para aplicar los cambios.
+
+Paso 2: Realizar Pruebas de Inyección SQL
+
+1.	Prueba de inyección SQL:
+o	Intenta ejecutar una consulta maliciosa, por ejemplo:
+o	
+SELECT * FROM clientes WHERE nombre = 'Juan Pérez' OR '1'='1';
+
+o	Si la consulta devuelve todos los registros, es vulnerable a inyección SQL.
+
+2.	Mitigación:
+
+o	Usa consultas preparadas en tu aplicación para evitar inyecciones SQL por ejemplo esta consulta en PHP
+
+
+<?php
+$host = 'localhost';
+$dbname = 'terminus2000';
+$user = 'root';
+$pass = 'tu_contraseña';
+
+try {
+    // Conectar a la base de datos
+    $pdo = new PDO("mysql:host=$host;dbname=$dbname", $user, $pass);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+    // Nombre a buscar
+    $nombre = "Juan Pérez";
+
+    // Preparar y ejecutar la consulta
+    $stmt = $pdo->prepare('SELECT * FROM clientes WHERE nombre = :nombre');
+    $stmt->execute(['nombre' => $nombre]);
+
+    // Obtener y mostrar los resultados
+    $resultados = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($resultados as $fila) {
+        echo "ID: " . $fila['id'] . " - Nombre: " . $fila['nombre'] . " - Email: " . $fila['email'] . "<br>";
+    }
+} catch (PDOException $e) {
+    echo "Error: " . $e->getMessage();
+}
+?>
