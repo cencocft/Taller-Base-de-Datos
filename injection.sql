@@ -1,0 +1,1 @@
+SELECT * FROM clientes WHERE nombre = 'Juan Pérez' OR '1'='1';
